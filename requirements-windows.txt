@@ -1,0 +1,45 @@
+# ==============================================================================
+# FraudGuard AI — Dependencias para Entorno Windows (Host / PowerShell)
+# Compatible con Python 3.10, 3.11 y 3.12 sobre Windows 10/11
+# ==============================================================================
+
+# --- Ciencia de Datos y Manipulación Matricial ---
+numpy>=1.26.0,<3.0.0
+pandas>=2.1.0,<4.0.0
+scipy>=1.11.0,<2.0.0
+
+# --- Minería de Datos y Machine Learning (KDD) ---
+scikit-learn>=1.4.0,<2.0.0
+imbalanced-learn>=0.12.0,<1.0.0
+joblib>=1.3.0,<2.0.0
+
+# --- Visualización Científica y Gráficos KDD ---
+matplotlib>=3.8.0,<4.0.0
+seaborn>=0.13.0,<1.0.0
+
+# --- Base de Datos Relacional y ORM (PostgreSQL) ---
+SQLAlchemy>=2.0.0,<3.0.0
+psycopg2-binary>=2.9.9,<3.0.0
+
+# --- Interfaz Interactiva y Dashboard Web ---
+streamlit>=1.35.0,<2.0.0
+
+# --- Microservicios, API REST y Validación ---
+fastapi>=0.110.0,<1.0.0
+uvicorn>=0.28.0,<1.0.0
+pydantic>=2.6.0,<3.0.0
+
+# --- Utilidades, Red y Entorno de Desarrollo ---
+requests>=2.31.0,<3.0.0
+python-dotenv>=1.0.0,<2.0.0
+tqdm>=4.66.0,<5.0.0
+ipykernel>=6.29.0,<8.0.0
+
+# --- Ecosistema Airflow en Windows ---
+# NOTA DE ARQUITECTURA:
+# El servidor completo de Apache Airflow (Scheduler, Worker, Dag-Processor, Celery)
+# requiere llamadas fork() del kernel de Linux, por lo que NO corre nativamente en Windows puro.
+# En Windows, el clúster de Airflow se ejecuta mediante Docker Desktop con Docker Compose:
+#   docker compose -f airflow/docker-compose.yaml up -d
+# Para interacción, autoría de DAGs y llamadas a la API desde Python en Windows se usa el cliente:
+apache-airflow-client>=2.10.0,<4.0.0

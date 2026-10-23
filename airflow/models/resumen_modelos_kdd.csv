@@ -1,0 +1,6 @@
+Modelo,Umbral,Accuracy,Precision,Recall,F1_Score,ROC_AUC,PR_AUC,TP_Fraudes_Detectados,FN_Fraudes_Omitidos,FP_Falsas_Alarmas
+1. Baseline Mayoritario (Dummy),0.5,0.9795,0.0,0.0,0.0,0.5,0.0205,0,411,0
+2. Regresión Logística (SMOTE),0.4,0.9159,0.099,0.382,0.1572,0.8144,0.0915,157,254,1429
+3. Árbol de Decisión (SMOTE),0.3,0.9354,0.1319,0.3844,0.1964,0.8097,0.1037,158,253,1040
+4. Random Forest (SMOTE),0.5,0.8794,0.0892,0.528,0.1525,0.8286,0.1014,217,194,2217
+5. Gradient Boosting (SMOTE),0.15,0.9237,0.1179,0.4185,0.184,0.837,0.1322,172,239,1287

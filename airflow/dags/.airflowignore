@@ -1,0 +1,5 @@
+# Ignorar scripts auxiliares que no son DAGs para evitar que el DAG processor intente parsearlos
+train_and_save.py
+simulate_stream.py
+producer_test.py
+real_time_detector.py

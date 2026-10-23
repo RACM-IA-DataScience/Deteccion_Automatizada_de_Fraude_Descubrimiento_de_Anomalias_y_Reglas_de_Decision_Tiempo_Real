@@ -1,0 +1,6 @@
+Regla_Decision,Transacciones_Activadas,Fraudes_Capturados,Precision_Regla_%,Lift_vs_Azar
+Regla R1 (Riesgo Crítico Internacional + Velocidad),269,91,33.83,16.46
+Regla R2 (País de Alto Riesgo + Cuenta Nueva <= 90 días),565,131,23.19,11.28
+Regla R3 (Madrugada 00-04h + Internacional + Sin Tarjeta Presente),902,114,12.64,6.15
+Regla R4 (Monto Desviado >4.8x Promedio + Historial Contracargos >=2),611,62,10.15,4.94
+Regla R5 (Acumulación Multiseñal: composite_risk_index >= 5),2859,575,20.11,9.79

@@ -1,0 +1,46 @@
+|--- distance_from_home_km <= 544.85
+|   |--- transactions_last_1h <= 2.50
+|   |   |--- num_declined_last_30d <= 3.50
+|   |   |   |--- transaction_hour <= 7.50
+|   |   |   |   |--- class: 0
+|   |   |   |--- transaction_hour >  7.50
+|   |   |   |   |--- class: 0
+|   |   |--- num_declined_last_30d >  3.50
+|   |   |   |--- transaction_hour <= 16.50
+|   |   |   |   |--- class: 0
+|   |   |   |--- transaction_hour >  16.50
+|   |   |   |   |--- class: 0
+|   |--- transactions_last_1h >  2.50
+|   |   |--- amount_vs_avg_ratio <= 4.99
+|   |   |   |--- num_declined_last_30d <= 1.50
+|   |   |   |   |--- class: 0
+|   |   |   |--- num_declined_last_30d >  1.50
+|   |   |   |   |--- class: 1
+|   |   |--- amount_vs_avg_ratio >  4.99
+|   |   |   |--- account_age_days <= 593.50
+|   |   |   |   |--- class: 1
+|   |   |   |--- account_age_days >  593.50
+|   |   |   |   |--- class: 1
+|--- distance_from_home_km >  544.85
+|   |--- card_present <= 0.50
+|   |   |--- high_risk_country <= 0.50
+|   |   |   |--- transactions_last_1h <= 2.50
+|   |   |   |   |--- class: 1
+|   |   |   |--- transactions_last_1h >  2.50
+|   |   |   |   |--- class: 1
+|   |   |--- high_risk_country >  0.50
+|   |   |   |--- transactions_last_1h <= 2.50
+|   |   |   |   |--- class: 1
+|   |   |   |--- transactions_last_1h >  2.50
+|   |   |   |   |--- class: 1
+|   |--- card_present >  0.50
+|   |   |--- high_risk_country <= 0.50
+|   |   |   |--- transactions_last_1h <= 2.50
+|   |   |   |   |--- class: 0
+|   |   |   |--- transactions_last_1h >  2.50
+|   |   |   |   |--- class: 1
+|   |   |--- high_risk_country >  0.50
+|   |   |   |--- account_age_days <= 928.50
+|   |   |   |   |--- class: 1
+|   |   |   |--- account_age_days >  928.50
+|   |   |   |   |--- class: 1
