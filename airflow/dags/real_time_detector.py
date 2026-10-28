@@ -86,21 +86,42 @@ for message in consumer:
     features_final = df_tx_encoded.reindex(columns=selected_features, fill_value=0)
     
     # --- PREDICCIÓN DE LOS MODELOS ---
-    is_fraud = int(modelo.predict(features_final)[0])
-    anomaly_score = int(iso_predicciones[0])
+    fraud_prob = float(modelo.predict_proba(features_final)[:, 1][0])
+    is_fraud = int(fraud_prob >= 0.50)
+    anomaly_val = float(df_tx_encoded["iso_anomaly_score"].iloc[0])
+    is_anomaly = bool(iso_predicciones[0] == -1)
+
+    r1_triggered = bool(
+        (df_tx["high_risk_country"].iloc[0] == 1)
+        and (df_tx["card_present"].iloc[0] == 0)
+        and (df_tx["transactions_last_1h"].iloc[0] >= 3)
+    )
+    r5_triggered = bool(df_tx["composite_risk_index"].iloc[0] >= 5)
+
+    if r1_triggered or r5_triggered or fraud_prob >= 0.70:
+        rec_action = "DECLINE"
+    elif fraud_prob >= 0.35 or is_anomaly:
+        rec_action = "MANUAL_REVIEW"
+    else:
+        rec_action = "APPROVE"
     
     # 3. EVALUAR ALERTA INMEDIATA SI ES FRAUDE
-    if is_fraud == 1:
+    if is_fraud == 1 or rec_action == "DECLINE":
         disparar_alerta_inmediata(tx_data)
     else:
         print(f"✅ Transacción legítima procesada: {tx_data['transaction_id']}")
 
     # 4. PERSISTENCIA SIMULTÁNEA EN POSTGRESQL (Auditoría)
+    now_ts = datetime.now(timezone.utc)
     df_resultado = pd.DataFrame({
         'transaction_id': [tx_data['transaction_id']],
+        'scoring_timestamp': [now_ts],
+        'prediction_datetime': [now_ts],
+        'fraud_probability': [fraud_prob],
+        'model_prediction': [is_fraud],
         'is_fraud': [is_fraud],
-        'anomaly_score': [anomaly_score],
-        'prediction_datetime': [datetime.now(timezone.utc)]
+        'anomaly_score': [anomaly_val],
+        'recommended_action': [rec_action]
     })
     
     df_resultado.to_sql(

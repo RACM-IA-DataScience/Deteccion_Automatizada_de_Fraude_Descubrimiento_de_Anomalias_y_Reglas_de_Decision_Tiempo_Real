@@ -20,7 +20,7 @@
 #
 # WARNING: This configuration is for local development. Do not use it in a production deployment.
 #
-# This configuration supports basic configuration using environment variables or an .venv file
+# This configuration supports basic configuration using environment variables or an .env file
 # The following variables are supported:
 #
 # AIRFLOW_IMAGE_NAME           - Docker image name used to run Airflow.
@@ -52,18 +52,22 @@ x-airflow-common:
   image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:3.3.2}
   # build: .
   env_file:
-    - ${ENV_FILE_PATH:-.venv}
+    - ${ENV_FILE_PATH:-.env}
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
   environment:
     &airflow-common-env
     AIRFLOW__CORE__EXECUTOR: CeleryExecutor
     AIRFLOW__CORE__AUTH_MANAGER: airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
-    AIRFLOW_CONN_POSTGRES_DEFAULT: 'postgresql://postgres:R0bb34l3x@host.docker.internal:5432/fraud_detection_kdd'
+    AIRFLOW_CONN_POSTGRES_DEFAULT: ${AIRFLOW_CONN_POSTGRES_DEFAULT:-postgresql://postgres:R0bb34l3x@host.docker.internal:5432/fraud_detection_kdd}
     AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql+psycopg2://airflow:airflow@postgres/airflow
     AIRFLOW__CELERY__BROKER_URL: redis://:@redis:6379/0
-    AIRFLOW__CORE__FERNET_KEY: ${FERNET_KEY}
-    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
-    AIRFLOW__CORE__LOAD_EXAMPLES: 'true'
+    AIRFLOW__CORE__FERNET_KEY: ${FERNET_KEY:-USS61ciADEyHYMsCigmLZfsdIfLWprIV_ZGAHwgUciA=}
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'false'
+    AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+    AIRFLOW__DAG_PROCESSOR__MIN_FILE_PROCESS_INTERVAL: '60'
+    AIRFLOW__SCHEDULER__MIN_FILE_PROCESS_INTERVAL: '60'
     AIRFLOW__CORE__EXECUTION_API_SERVER_URL: 'http://airflow-apiserver:8080/execution/'
     AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW__API_AUTH__JWT_SECRET:-airflow_jwt_secret}
     AIRFLOW__API_AUTH__JWT_ISSUER: ${AIRFLOW__API_AUTH__JWT_ISSUER:-airflow}
@@ -74,7 +78,7 @@ x-airflow-common:
     AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
     # WARNING: Use _PIP_ADDITIONAL_REQUIREMENTS option ONLY for a quick checks
     # for other purpose (development, test and especially production usage) build/extend Airflow image.
-    _PIP_ADDITIONAL_REQUIREMENTS: "scikit-learn joblib pandas"
+    _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-}
     # The following line can be used to set a custom config file, stored in the local config folder
     AIRFLOW_CONFIG: '/opt/airflow/config/airflow.cfg'
   volumes:
@@ -231,7 +235,6 @@ services:
   airflow-init:
     <<: *airflow-common
     entrypoint: /bin/bash
-
     # yamllint disable rule:line-length
     command:
       - -c
@@ -241,7 +244,7 @@ services:
           echo -e "\033[1;33mWARNING!!!: AIRFLOW_UID not set!\e[0m"
           echo "If you are on Linux, you SHOULD follow the instructions below to set "
           echo "AIRFLOW_UID environment variable, otherwise files will be owned by root."
-          echo "For other operating systems you can get rid of the warning with manually created .venv file:"
+          echo "For other operating systems you can get rid of the warning with manually created .env file:"
           echo "    See: https://airflow.apache.org/docs/apache-airflow/stable/howto/docker-compose/index.html#setting-the-right-airflow-user"
           echo
           export AIRFLOW_UID=$$(id -u)
@@ -282,22 +285,18 @@ services:
         echo
         echo "Creating missing opt dirs if missing:"
         echo
-        mkdir -v -p /opt/airflow/{logs,dags,plugins,config}
+        mkdir -v -p /opt/airflow/{logs,dags,plugins,config,models}
         echo
         echo "Airflow version:"
         /entrypoint airflow version
         echo
         echo "Files in shared volumes:"
         echo
-        ls -la /opt/airflow/{logs,dags,plugins,config}
+        ls -la /opt/airflow/{logs,dags,plugins,config,models}
         echo
         echo "Running airflow config list to create default config file if missing."
         echo
         /entrypoint airflow config list >/dev/null
-        echo
-        echo "Files in shared volumes:"
-        echo
-        ls -la /opt/airflow/{logs,dags,plugins,config}
         echo
         echo "Change ownership of files in /opt/airflow to ${AIRFLOW_UID:-50000}:0"
         echo
@@ -305,11 +304,9 @@ services:
         echo
         echo "Change ownership of files in shared volumes to ${AIRFLOW_UID:-50000}:0"
         echo
-        chown -v -R "${AIRFLOW_UID:-50000}:0" /opt/airflow/{logs,dags,plugins,config}
+        chown -R "${AIRFLOW_UID:-50000}:0" /opt/airflow/{logs,dags,plugins,config,models}
         echo
-        echo "Files in shared volumes:"
-        echo
-        ls -la /opt/airflow/{logs,dags,plugins,config}
+        echo "Airflow initialization completed successfully."
 
     # yamllint enable rule:line-length
     environment:
@@ -349,7 +346,7 @@ services:
     healthcheck:
       test: ["CMD", "curl", "--fail", "http://localhost:5555/"]
       interval: 30s
-      timeout: 30s
+      timeout: 10s
       retries: 5
       start_period: 30s
     restart: always

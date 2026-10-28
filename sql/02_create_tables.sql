@@ -132,7 +132,28 @@ CREATE TABLE raw.fraud_labels (
 CREATE INDEX IF NOT EXISTS idx_fraud_labels_type ON raw.fraud_labels (fraud_type);
 
 --------------------------------------------------------------------------------
--- 4. TABLA DE PREDICCIONES Y MOTOR DE INFERENCIA (MLOps)
+-- 4. TABLA DE PREDICCIONES EN TIEMPO REAL Y AUDITORÍA (raw.predictions)
+-- Utilizada por el pipeline de Airflow y el Monitor de Auditoría de Streamlit
+--------------------------------------------------------------------------------
+DROP TABLE IF EXISTS raw.predictions CASCADE;
+
+CREATE TABLE raw.predictions (
+    transaction_id                  VARCHAR(32) NOT NULL,
+    scoring_timestamp               TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    prediction_datetime             TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    fraud_probability               DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+    model_prediction                SMALLINT NOT NULL DEFAULT 0,
+    is_fraud                        SMALLINT NOT NULL DEFAULT 0,
+    anomaly_score                   DOUBLE PRECISION,
+    recommended_action              VARCHAR(20) NOT NULL DEFAULT 'APPROVE'
+);
+
+CREATE INDEX IF NOT EXISTS idx_raw_pred_tx_id ON raw.predictions (transaction_id);
+CREATE INDEX IF NOT EXISTS idx_raw_pred_scoring_ts ON raw.predictions (scoring_timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_raw_pred_action ON raw.predictions (recommended_action);
+
+--------------------------------------------------------------------------------
+-- 5. TABLA DE PREDICCIONES Y MOTOR DE INFERENCIA (MLOps)
 -- Guarda la evaluación del sistema antifraude para cada transacción
 --------------------------------------------------------------------------------
 DROP TABLE IF EXISTS ml_ops.fraud_predictions CASCADE;
@@ -140,13 +161,15 @@ DROP TABLE IF EXISTS ml_ops.fraud_predictions CASCADE;
 CREATE TABLE ml_ops.fraud_predictions (
     prediction_id                   BIGSERIAL PRIMARY KEY,
     transaction_id                  VARCHAR(32) NOT NULL REFERENCES raw.transactions(transaction_id) ON DELETE CASCADE,
+    scoring_timestamp               TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     
     -- Minería de anomalías no supervisada
+    anomaly_score                   DOUBLE PRECISION,
     isolation_forest_anomaly_score  NUMERIC(8, 5),
     is_anomaly                      BOOLEAN,
     
     -- Modelo supervisado (Random Forest / Gradient Boosting)
-    fraud_probability               NUMERIC(6, 4) NOT NULL,
+    fraud_probability               DOUBLE PRECISION NOT NULL,
     model_prediction                SMALLINT NOT NULL CHECK (model_prediction IN (0, 1)),
     model_version                   VARCHAR(50) NOT NULL DEFAULT 'v1.0.0-kdd2026',
     

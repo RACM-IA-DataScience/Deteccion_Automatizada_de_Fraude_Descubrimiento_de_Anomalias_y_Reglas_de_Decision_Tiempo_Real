@@ -7,6 +7,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import json
+import os
 import uuid
 from datetime import datetime, timezone
 import sqlalchemy
@@ -90,15 +91,64 @@ def load_engine():
     return FraudInferenceEngine()
 
 
+def ensure_predictions_schema(db_engine):
+    """Asegura que la tabla raw.predictions contenga todas las columnas de auditoría requeridas."""
+    with db_engine.begin() as conn:
+        conn.execute(sqlalchemy.text("""
+            CREATE TABLE IF NOT EXISTS raw.predictions (
+                transaction_id TEXT,
+                scoring_timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+                prediction_datetime TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+                fraud_probability DOUBLE PRECISION DEFAULT 0.0,
+                model_prediction SMALLINT DEFAULT 0,
+                is_fraud SMALLINT DEFAULT 0,
+                anomaly_score DOUBLE PRECISION,
+                recommended_action VARCHAR(20) DEFAULT 'APPROVE'
+            );
+            ALTER TABLE raw.predictions ADD COLUMN IF NOT EXISTS scoring_timestamp TIMESTAMPTZ;
+            ALTER TABLE raw.predictions ADD COLUMN IF NOT EXISTS prediction_datetime TIMESTAMPTZ;
+            ALTER TABLE raw.predictions ADD COLUMN IF NOT EXISTS fraud_probability DOUBLE PRECISION;
+            ALTER TABLE raw.predictions ADD COLUMN IF NOT EXISTS model_prediction SMALLINT;
+            ALTER TABLE raw.predictions ADD COLUMN IF NOT EXISTS is_fraud SMALLINT;
+            ALTER TABLE raw.predictions ADD COLUMN IF NOT EXISTS anomaly_score DOUBLE PRECISION;
+            ALTER TABLE raw.predictions ADD COLUMN IF NOT EXISTS recommended_action VARCHAR(20);
+        """))
+        # Rellenar valores nulos heredados si la tabla fue creada con esquema reducido de Airflow
+        conn.execute(sqlalchemy.text("""
+            UPDATE raw.predictions
+            SET
+                scoring_timestamp = COALESCE(scoring_timestamp, prediction_datetime, CURRENT_TIMESTAMP),
+                model_prediction = COALESCE(model_prediction, is_fraud, 0),
+                fraud_probability = COALESCE(fraud_probability, CASE WHEN is_fraud = 1 THEN 0.85 ELSE 0.05 END),
+                recommended_action = COALESCE(
+                    recommended_action,
+                    CASE
+                        WHEN is_fraud = 1 THEN 'DECLINE'
+                        WHEN anomaly_score = -1 THEN 'MANUAL_REVIEW'
+                        ELSE 'APPROVE'
+                    END
+                )
+            WHERE scoring_timestamp IS NULL
+               OR fraud_probability IS NULL
+               OR recommended_action IS NULL;
+        """))
+
+
 def get_db_connection():
     """Conecta a la base de datos PostgreSQL local si está disponible."""
     try:
+        user = os.getenv("PGUSER", "postgres")
+        pwd = os.getenv("PGPASSWORD", "R0bb34l3x")
+        host = os.getenv("PGHOST", "localhost")
+        port = os.getenv("PGPORT", "5432")
+        db = os.getenv("PGDATABASE", "fraud_detection_kdd")
         engine = sqlalchemy.create_engine(
-            "postgresql+psycopg2://postgres:R0bb34l3x@localhost:5432/fraud_detection_kdd",
+            f"postgresql+psycopg2://{user}:{pwd}@{host}:{port}/{db}",
             connect_args={"connect_timeout": 3}
         )
         with engine.connect() as conn:
             conn.execute(sqlalchemy.text("SELECT 1;"))
+        ensure_predictions_schema(engine)
         return engine
     except Exception:
         return None
@@ -396,7 +446,12 @@ with tab_simulador:
 
     if eval_btn:
         with st.spinner("Ejecutando feature engineering, aislamiento de anomalías y ensamble de modelos..."):
-            result = engine.predict(tx_input)
+            st.session_state["last_eval_result"] = engine.predict(tx_input)
+            st.session_state["last_tx_input"] = tx_input.copy()
+
+    if "last_eval_result" in st.session_state:
+        result = st.session_state["last_eval_result"]
+        saved_tx_input = st.session_state["last_tx_input"]
 
         st.markdown("### 2. Veredicto del Sistema y Métricas de Inferencia")
         
@@ -477,14 +532,28 @@ with tab_simulador:
         if db_engine:
             if st.button("💾 Registrar esta Transacción y su Predicción en PostgreSQL"):
                 try:
-                    df_raw = pd.DataFrame([tx_input])
+                    now_ts = datetime.now(timezone.utc)
+                    tx_db_row = saved_tx_input.copy()
+                    tx_db_row["transaction_id"] = result["transaction_id"]
+                    tx_db_row["customer_id"] = "CUST-SIM-001"
+                    tx_db_row["card_id"] = "CARD-SIM-001"
+                    tx_db_row["merchant_id"] = "MERCH-SIM-001"
+                    tx_db_row["transaction_datetime"] = now_ts.replace(tzinfo=None)
+                    tx_db_row["customer_state"] = "CA"
+                    tx_db_row["is_weekend"] = 1 if now_ts.weekday() >= 5 else 0
+                    browser_val = tx_db_row.pop("browser_clean", None)
+                    tx_db_row["browser"] = None if browser_val in (None, "No_Aplica_Fisico") else browser_val
+
+                    df_raw = pd.DataFrame([tx_db_row])
                     df_raw.to_sql("transactions", con=db_engine, schema="raw", if_exists="append", index=False)
                     
                     df_pred = pd.DataFrame([{
                         "transaction_id": result["transaction_id"],
-                        "scoring_timestamp": datetime.now(timezone.utc),
+                        "scoring_timestamp": now_ts,
+                        "prediction_datetime": now_ts,
                         "fraud_probability": result["fraud_probability"],
                         "model_prediction": result["model_prediction"],
+                        "is_fraud": result["model_prediction"],
                         "anomaly_score": result["anomaly_score"],
                         "recommended_action": result["recommended_action"]
                     }])
@@ -516,22 +585,26 @@ with tab_bd:
                 query_recent = """
                     SELECT 
                         p.transaction_id,
-                        p.scoring_timestamp,
+                        COALESCE(p.scoring_timestamp, p.prediction_datetime) AS scoring_timestamp,
                         t.transaction_amount,
                         t.merchant_category,
                         t.merchant_country,
-                        round(cast(p.fraud_probability as numeric), 4) as fraud_probability,
-                        p.recommended_action
+                        round(cast(COALESCE(p.fraud_probability, 0.0) as numeric), 4) as fraud_probability,
+                        COALESCE(p.recommended_action, 'APPROVE') as recommended_action
                     FROM raw.predictions p
                     LEFT JOIN raw.transactions t ON p.transaction_id = t.transaction_id
-                    ORDER BY p.scoring_timestamp DESC
+                    ORDER BY COALESCE(p.scoring_timestamp, p.prediction_datetime) DESC NULLS LAST
                     LIMIT 15;
                 """
                 df_recent = pd.read_sql(query_recent, con=db_engine)
                 st.dataframe(df_recent, use_container_width=True, hide_index=True)
                 
                 # Resumen de acciones recomendadas
-                query_dist = "SELECT recommended_action, count(*) as total FROM raw.predictions GROUP BY recommended_action;"
+                query_dist = """
+                    SELECT COALESCE(recommended_action, 'APPROVE') AS recommended_action, count(*) as total
+                    FROM raw.predictions
+                    GROUP BY COALESCE(recommended_action, 'APPROVE');
+                """
                 df_dist = pd.read_sql(query_dist, con=db_engine)
                 st.bar_chart(df_dist.set_index("recommended_action"))
         except Exception as ex:

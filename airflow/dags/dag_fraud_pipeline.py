@@ -117,6 +117,14 @@ def detect_fraud_callable():
         + (features["distance_from_last_tx_km"] > 800).astype(int)
     )
     
+    r1_triggered = (
+        (df_nuevos["high_risk_country"] == 1)
+        & (df_nuevos["card_present"] == 0)
+        & (df_nuevos["transactions_last_1h"] >= 3)
+    )
+    r5_triggered = (features["composite_risk_index"] >= 5)
+    critical_rule_triggered = r1_triggered | r5_triggered
+
     cat_cols = ["merchant_category", "merchant_country", "transaction_day_of_week", "customer_gender", "transaction_channel", "device_type", "browser_clean", "email_domain"]
     features = pd.get_dummies(features, columns=cat_cols, drop_first=True, dtype=int)
     
@@ -132,18 +140,54 @@ def detect_fraud_callable():
     
     iso_features = ["transaction_amount", "amount_last_1h", "transactions_last_1h", "distance_from_home_km", "distance_from_last_tx_km", "amount_vs_avg_ratio", "zscore_amount_30d", "composite_risk_index"]
     iso_predicciones = isolator.predict(features[iso_features])
-    features["iso_anomaly_score"] = -isolator.score_samples(features[iso_features])
+    is_anomaly = iso_predicciones == -1
+    anomaly_scores = -isolator.score_samples(features[iso_features])
+    features["iso_anomaly_score"] = anomaly_scores
     
     features_final = features.reindex(columns=selected_features, fill_value=0)
-    rf_predicciones = modelo.predict(features_final)
-    
+    rf_probs = modelo.predict_proba(features_final)[:, 1]
+    rf_predicciones = (rf_probs >= 0.50).astype(int)
+
+    condiciones = [
+        critical_rule_triggered | (rf_probs >= 0.70),
+        ((rf_probs >= 0.35) & (rf_probs < 0.70)) | is_anomaly,
+    ]
+    acciones = ["DECLINE", "MANUAL_REVIEW"]
+    recommended_actions = np.select(condiciones, acciones, default="APPROVE")
+
+    now_ts = datetime.now(timezone.utc)
     df_resultados = pd.DataFrame({
         'transaction_id': df_nuevos['transaction_id'],
+        'scoring_timestamp': now_ts,
+        'prediction_datetime': now_ts,
+        'fraud_probability': rf_probs,
+        'model_prediction': rf_predicciones,
         'is_fraud': rf_predicciones,
-        'anomaly_score': iso_predicciones,
-        'prediction_datetime': datetime.now(timezone.utc)
+        'anomaly_score': anomaly_scores,
+        'recommended_action': recommended_actions,
     })
-    
+
+    with engine.begin() as conn:
+        conn.execute(sqlalchemy.text("""
+            CREATE TABLE IF NOT EXISTS raw.predictions (
+                transaction_id TEXT,
+                scoring_timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+                prediction_datetime TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+                fraud_probability DOUBLE PRECISION,
+                model_prediction SMALLINT,
+                is_fraud SMALLINT,
+                anomaly_score DOUBLE PRECISION,
+                recommended_action VARCHAR(20)
+            );
+            ALTER TABLE raw.predictions ADD COLUMN IF NOT EXISTS scoring_timestamp TIMESTAMPTZ;
+            ALTER TABLE raw.predictions ADD COLUMN IF NOT EXISTS prediction_datetime TIMESTAMPTZ;
+            ALTER TABLE raw.predictions ADD COLUMN IF NOT EXISTS fraud_probability DOUBLE PRECISION;
+            ALTER TABLE raw.predictions ADD COLUMN IF NOT EXISTS model_prediction SMALLINT;
+            ALTER TABLE raw.predictions ADD COLUMN IF NOT EXISTS is_fraud SMALLINT;
+            ALTER TABLE raw.predictions ADD COLUMN IF NOT EXISTS anomaly_score DOUBLE PRECISION;
+            ALTER TABLE raw.predictions ADD COLUMN IF NOT EXISTS recommended_action VARCHAR(20);
+        """))
+
     df_resultados.to_sql(
         name="predictions",
         schema="raw",

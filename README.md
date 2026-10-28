@@ -306,6 +306,7 @@ Deteccion_Automatizada_de_Fraude_Descubrimiento_de_Anomalías_y_Reglas_de_Decisi
 
 ## 12. Documentación Complementaria y Licencia
 
+* 🚀 **[`INSTRUCCIONES_EJECUCION.md`](INSTRUCCIONES_EJECUCION.md)**: Guía paso a paso de instalación, configuración de PostgreSQL, Docker/Airflow en Linux/WSL2 y ejecución de todas las modalidades.
 * 📄 **[`docs/DOCUMENTACION_TECNICA.md`](docs/DOCUMENTACION_TECNICA.md)**: Memoria técnica detallada con justificación matemática de las 8 etapas del proceso KDD.
 * 📘 **[`docs/DICCIONARIO_FUNCIONES.md`](docs/DICCIONARIO_FUNCIONES.md)**: Catálogo técnico de todas las funciones del repositorio con su descripción, sintaxis de código, parámetros y retornos.
 * 📜 **Licencia:** Distribuido bajo los términos de la Licencia **MIT**. Consulta [`LICENSE`](LICENSE) para más detalles.
